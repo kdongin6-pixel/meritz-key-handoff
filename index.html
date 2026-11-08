@@ -1,1 +1,28 @@
-<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; form-action 'none'"><title>키 전달 종료</title><h1>키 전달이 종료됐습니다.</h1><p>이 페이지에 키를 입력하지 마세요.</p></html>
+<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-M0zOj2SVeUdG7iUJthRvUkfw0w4BHH/TABTO9l2ao5Q='; style-src 'unsafe-inline'; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'"><title>한국투자증권 키 오프라인 암호화</title><style>body{max-width:540px;margin:auto;padding:24px;font:17px/1.7 system-ui;background:#f4f6fa;color:#182234}label,input,button{display:block;width:100%;box-sizing:border-box}input,button{padding:14px;margin:8px 0 24px;font-size:17px}#status{font-weight:bold}a{overflow-wrap:anywhere}</style><h1>한국투자증권 ISA 계좌번호 암호화</h1><p>외부 전송·분석 도구·브라우저 저장 기능이 없습니다. 입력값은 이 브라우저에서 암호화되며 복호화 개인키는 PC에만 있습니다.</p><p id="status">준비 확인 중…</p><p><b>지금은 실제 계좌번호를 입력하지 마세요.</b> 먼저 이 화면에서 초록색 ‘준비 완료’가 보이는지만 확인해 주세요.</p><form autocomplete="off"><label for="appkey">ISA 계좌번호 앞 8자리</label><input id="appkey" type="password" autocomplete="off" required disabled><label for="appsecret">계좌상품코드 뒤 2자리</label><input id="appsecret" type="password" autocomplete="off" required disabled><button disabled>암호화 파일 저장</button></form><div id="download"></div><p>휴대폰에서 파일이 열리지 않으면 중단하고 알려주세요. 계좌번호를 채팅으로 보내지 마세요. 이 파일은 24시간 뒤 만료됩니다.</p><script>const META={"version": 1, "application": "kis-isa-account-number", "request_id": "2b643305ac345410f704773d6d98ee07", "expires_at": "2026-11-09T19:30:12.438217+00:00", "algorithm": "RSA-OAEP-SHA256"},PUBLIC_KEY='MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAsEe882R1wdRlC9E7qdbIG8CksVXnZPzL7wtAid99u7Y0zAk/lKiniMBtnv3bvMUzyqeRdySxfnbfFAhtSFCYS+K2cqXNyuePT0QsUweK/cbxjLmjxxpkXboTbZRa4QCAIuAKkCQNCYmAGfY95evCEndL0MKpwHX2S3M1LDYPSjGCCBLJ3J/i9DBU38M2z1kFY0/o6inZWrgghu3dXhFQDVAB9zIgeDhIRisudApc2XEXPwvN0e2jgc7X2kUBqpWSWsmoaADqcsN/HcaprX5JkMTCkjl5Oq3zNgzET0DgqO/2q3CqmmurEyk0/x0ZPnqLjLIBnUAWaBVSo9HRBoceTXvGKl0w0UOfsWKhD+caQshX9nw1sdlsLeooaAXxim/e/PGeJjjzVkMmcqL7xARcBP20Q5f+LweP+6qbFf4LTKgjYKXBl7daoqNnS0jqI6yftUG22Uqq2QZX64YJ48vew5Y2qwwcBhn1CoLBuG3Ateo6o5qmYUhhyNXBD8hkfQf1AgMBAAE=';
+const status=document.querySelector('#status'),form=document.querySelector('form');
+const keyInput=document.querySelector('#appkey'),secretInput=document.querySelector('#appsecret');
+let key;
+const label=()=>new TextEncoder().encode(META.application+'|'+META.request_id);
+async function encryptPacket(appKey,appSecret){
+ if(!key||Date.now()>=Date.parse(META.expires_at))throw Error('만료 또는 암호화 준비 실패');
+ const text=JSON.stringify({app_key:appKey,app_secret:appSecret});
+ const data=new TextEncoder().encode(text);
+ if(data.length>318)throw Error('입력 길이가 너무 깁니다. 계좌번호와 상품코드만 입력하세요.');
+ const result=await crypto.subtle.encrypt({name:'RSA-OAEP',label:label()},key,data);
+ return {...META,ciphertext:btoa(String.fromCharCode(...new Uint8Array(result)))};
+}
+(async()=>{try{
+ if(!window.isSecureContext||!crypto.subtle)throw Error('보안 브라우저 환경이 아닙니다');
+ if(Date.now()>=Date.parse(META.expires_at))throw Error('입력 도구가 만료됐습니다');
+ key=await crypto.subtle.importKey('spki',Uint8Array.from(atob(PUBLIC_KEY),c=>c.charCodeAt(0)),{name:'RSA-OAEP',hash:'SHA-256'},false,['encrypt']);
+ await encryptPacket('fixture-key','fixture-secret');
+ status.textContent='준비 완료 — 암호화 기능 정상';status.style.color='#087c42';document.querySelector('button').disabled=false;
+}catch(e){status.textContent='사용 불가: '+e.message;}})();
+form.addEventListener('submit',async e=>{e.preventDefault();try{
+ const packet=await encryptPacket(keyInput.value.trim(),secretInput.value.trim());
+ const blob=new Blob([JSON.stringify(packet)],{type:'application/json'});const url=URL.createObjectURL(blob);
+ const a=document.createElement('a');a.href=url;a.download='kis-account-encrypted-'+META.request_id+'.json';a.textContent='암호화 파일 다시 저장';
+ document.querySelector('#download').replaceChildren(a);a.click();setTimeout(()=>URL.revokeObjectURL(url),600000);
+ status.textContent='암호화 완료. 내려받은 JSON 파일만 보내세요.';
+}catch(e){status.textContent='오류: '+e.message;}finally{keyInput.value='';secretInput.value='';}});
+</script></html>
